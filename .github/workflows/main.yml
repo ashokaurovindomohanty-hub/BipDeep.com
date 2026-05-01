@@ -64,3 +64,19 @@ jobs:
 yml
 - name: Checkout code
   uses: actions/checkout@v2
+- name: Install dependencies
+  run: |
+    npm install
+- name: Install frontend dependencies
+  run: |
+    cd frontend && npm install
+- name: Deploy to IC
+  uses: dfinity/install@v1
+  with:
+    version: 0.9.3
+- name: Deploy canister
+  run: |
+    dfx deploy
+- name: Build and deploy frontend
+  run: |
+    cd frontend && vite build && dfx deploy --no-wallet
