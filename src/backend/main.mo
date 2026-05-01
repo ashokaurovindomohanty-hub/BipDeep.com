@@ -16,6 +16,7 @@ import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
 actor {
+  // ============ Type Definitions ============
   public type UserProfile = {
     username : Text;
     bio : Text;
@@ -77,22 +78,57 @@ actor {
   public type Earning = {
     user : Principal;
     amount : Nat;
-    source : {
-      #ad;
-      #nft;
-      #tip;
-    };
+    source : { #ad; #nft; #tip };
     timestamp : Time.Time;
   };
 
+  // Result type for better error handling
+  public type Result<T, E> = {
+    #ok : T;
+    #err : E;
+  };
+
+  // ============ Utility Functions ============
   module Earning {
     public func compare(a : Earning, b : Earning) : Order.Order {
       Int.compare(a.timestamp, b.timestamp);
     };
   };
 
+  // Input validation helpers
+  private func validateUsername(username : Text) : Bool {
+    let length = Text.size(username);
+    length > 0 and length <= 50;
+  };
+
+  private func validateBio(bio : Text) : Bool {
+    Text.size(bio) <= 500;
+  };
+
+  private func validatePostTitle(title : Text) : Bool {
+    let length = Text.size(title);
+    length > 0 and length <= 200;
+  };
+
+  private func validatePostDescription(desc : Text) : Bool {
+    let length = Text.size(desc);
+    length > 0 and length <= 5000;
+  };
+
+  private func validateCommentContent(content : Text) : Bool {
+    let length = Text.size(content);
+    length > 0 and length <= 1000;
+  };
+
+  // ID generation helper
+  private func generateCommentId(postId : Text, counter : Nat) : Text {
+    postId # "#" # Nat.toText(counter) # "#" # Nat.toText(Time.now());
+  };
+
+  // ============ Storage & Initialization ============
   include MixinStorage();
 
+  // Primary data stores
   let userProfiles = Map.empty<Principal, UserProfile>();
   let posts = Map.empty<Text, Post>();
   let comments = Map.empty<Text, Comment>();
@@ -100,15 +136,88 @@ actor {
   let nfts = Map.empty<Text, NFT>();
   let messages = Map.empty<Principal, List.List<Message>>();
   let earnings = Map.empty<Principal, List.List<Earning>>();
+
+  // Social graph storage
   let followers = Map.empty<Principal, Set.Set<Principal>>();
   let following = Map.empty<Principal, Set.Set<Principal>>();
+
+  // Engagement storage
   let postLikes = Map.empty<Text, Set.Set<Principal>>();
+
+  // Index for performance optimization
+  let userPostsIndex = Map.empty<Principal, [Text]>();
+  let userNFTsIndex = Map.empty<Principal, [Text]>();
+  let postCommentsIndex = Map.empty<Text, [Text]>();
+
   var commentCounter : Nat = 0;
 
+  // Access control state
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  // Required profile management functions
+  // ============ Stable Storage for Upgrades ============
+  stable var stableUserProfiles : [(Principal, UserProfile)] = [];
+  stable var stablePosts : [(Text, Post)] = [];
+  stable var stableComments : [(Text, Comment)] = [];
+  stable var stableLiveStreams : [(Text, LiveStream)] = [];
+  stable var stableNFTs : [(Text, NFT)] = [];
+  stable var stableFollowers : [(Principal, [Principal])] = [];
+  stable var stableFollowing : [(Principal, [Principal])] = [];
+  stable var stablePostLikes : [(Text, [Principal])] = [];
+  stable var stableUserPostsIndex : [(Principal, [Text])] = [];
+  stable var stableUserNFTsIndex : [(Principal, [Text])] = [];
+  stable var stableCommentCounter : Nat = 0;
+
+  system func preupgrade() {
+    stableUserProfiles := Iter.toArray(userProfiles.entries());
+    stablePosts := Iter.toArray(posts.entries());
+    stableComments := Iter.toArray(comments.entries());
+    stableLiveStreams := Iter.toArray(liveStreams.entries());
+    stableNFTs := Iter.toArray(nfts.entries());
+    stableFollowers := Array.map<(Principal, Set.Set<Principal>), (Principal, [Principal])>(
+      Iter.toArray(followers.entries()),
+      func((k, v)) { (k, v.toArray()) }
+    );
+    stableFollowing := Array.map<(Principal, Set.Set<Principal>), (Principal, [Principal])>(
+      Iter.toArray(following.entries()),
+      func((k, v)) { (k, v.toArray()) }
+    );
+    stablePostLikes := Array.map<(Text, Set.Set<Principal>), (Text, [Principal])>(
+      Iter.toArray(postLikes.entries()),
+      func((k, v)) { (k, v.toArray()) }
+    );
+    stableUserPostsIndex := Iter.toArray(userPostsIndex.entries());
+    stableUserNFTsIndex := Iter.toArray(userNFTsIndex.entries());
+    stableCommentCounter := commentCounter;
+  };
+
+  system func postupgrade() {
+    for ((k, v) in stableUserProfiles.vals()) { userProfiles.add(k, v) };
+    for ((k, v) in stablePosts.vals()) { posts.add(k, v) };
+    for ((k, v) in stableComments.vals()) { comments.add(k, v) };
+    for ((k, v) in stableLiveStreams.vals()) { liveStreams.add(k, v) };
+    for ((k, v) in stableNFTs.vals()) { nfts.add(k, v) };
+    for ((k, v) in stableFollowers.vals()) {
+      var set = Set.empty<Principal>();
+      for (p in v.vals()) { set := set.add(p) };
+      followers.add(k, set);
+    };
+    for ((k, v) in stableFollowing.vals()) {
+      var set = Set.empty<Principal>();
+      for (p in v.vals()) { set := set.add(p) };
+      following.add(k, set);
+    };
+    for ((k, v) in stablePostLikes.vals()) {
+      var set = Set.empty<Principal>();
+      for (p in v.vals()) { set := set.add(p) };
+      postLikes.add(k, set);
+    };
+    for ((k, v) in stableUserPostsIndex.vals()) { userPostsIndex.add(k, v) };
+    for ((k, v) in stableUserNFTsIndex.vals()) { userNFTsIndex.add(k, v) };
+    commentCounter := stableCommentCounter;
+  };
+
+  // ============ Profile Management ============
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view profiles");
@@ -118,8 +227,13 @@ actor {
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
     if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
+      Runtime.trap("Unauthorized: Can only view your own profile or admin access required");
     };
+    userProfiles.get(user);
+  };
+
+  public query ({ caller }) func getProfile(user : Principal) : async ?UserProfile {
+    // Public profile view - respects user privacy settings if implemented
     userProfiles.get(user);
   };
 
@@ -127,13 +241,24 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can save profiles");
     };
+    if (not validateUsername(profile.username)) {
+      Runtime.trap("Invalid username: must be 1-50 characters");
+    };
+    if (not validateBio(profile.bio)) {
+      Runtime.trap("Invalid bio: must be under 500 characters");
+    };
     userProfiles.add(caller, profile);
   };
 
-  // User management
   public shared ({ caller }) func createProfile(username : Text, bio : Text, avatarUrl : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create profiles");
+    };
+    if (not validateUsername(username)) {
+      Runtime.trap("Invalid username: must be 1-50 characters");
+    };
+    if (not validateBio(bio)) {
+      Runtime.trap("Invalid bio: must be under 500 characters");
     };
 
     let profile : UserProfile = {
@@ -142,17 +267,18 @@ actor {
       avatarUrl;
       createdAt = Time.now();
     };
-
     userProfiles.add(caller, profile);
-  };
-
-  public query ({ caller }) func getProfile(user : Principal) : async ?UserProfile {
-    userProfiles.get(user);
   };
 
   public shared ({ caller }) func updateProfile(username : Text, bio : Text, avatarUrl : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can update profiles");
+    };
+    if (not validateUsername(username)) {
+      Runtime.trap("Invalid username: must be 1-50 characters");
+    };
+    if (not validateBio(bio)) {
+      Runtime.trap("Invalid bio: must be under 500 characters");
     };
 
     switch (userProfiles.get(caller)) {
@@ -169,32 +295,43 @@ actor {
     };
   };
 
+  // ============ Social Graph Management ============
   public shared ({ caller }) func followUser(target : Principal) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can follow others");
     };
-
     if (caller == target) {
       Runtime.trap("Cannot follow yourself");
     };
+    if (userProfiles.get(target) == null) {
+      Runtime.trap("Target user does not exist");
+    };
 
-    let currentFollowers = switch (followers.get(target)) {
+    // Update followers set for target
+    let newFollowers = switch (followers.get(target)) {
       case (null) { Set.singleton(caller) };
-      case (?existing) {
-        existing.add(caller);
-        existing;
+      case (?existing) { 
+        var newSet = Set.empty<Principal>();
+        for (follower in existing.values()) {
+          newSet := newSet.add(follower);
+        };
+        newSet.add(caller);
       };
     };
-    followers.add(target, currentFollowers);
+    followers.add(target, newFollowers);
 
-    let currentFollowing = switch (following.get(caller)) {
+    // Update following set for caller
+    let newFollowing = switch (following.get(caller)) {
       case (null) { Set.singleton(target) };
-      case (?existing) {
-        existing.add(target);
-        existing;
+      case (?existing) { 
+        var newSet = Set.empty<Principal>();
+        for (followee in existing.values()) {
+          newSet := newSet.add(followee);
+        };
+        newSet.add(target);
       };
     };
-    following.add(caller, currentFollowing);
+    following.add(caller, newFollowing);
   };
 
   public shared ({ caller }) func unfollowUser(target : Principal) : async () {
@@ -205,16 +342,26 @@ actor {
     switch (followers.get(target)) {
       case (null) { Runtime.trap("Not following this user") };
       case (?existing) {
-        existing.remove(caller);
-        followers.add(target, existing);
+        var newSet = Set.empty<Principal>();
+        for (follower in existing.values()) {
+          if (follower != caller) {
+            newSet := newSet.add(follower);
+          };
+        };
+        followers.add(target, newSet);
       };
     };
 
     switch (following.get(caller)) {
       case (null) { Runtime.trap("No following record found") };
       case (?existing) {
-        existing.remove(target);
-        following.add(caller, existing);
+        var newSet = Set.empty<Principal>();
+        for (followee in existing.values()) {
+          if (followee != target) {
+            newSet := newSet.add(followee);
+          };
+        };
+        following.add(caller, newSet);
       };
     };
   };
@@ -248,17 +395,15 @@ actor {
       case (?followingSet) { followingSet.size() };
     };
 
-    let userPosts = posts.values().toArray().filter(func(p) { p.author == user });
-    let totalPosts = userPosts.size();
-
-    {
-      followerCount;
-      followingCount;
-      totalPosts;
+    let totalPosts = switch (userPostsIndex.get(user)) {
+      case (null) { 0 };
+      case (?postIds) { postIds.size() };
     };
+
+    { followerCount; followingCount; totalPosts };
   };
 
-  // Posts/Videos
+  // ============ Posts/Videos Management ============
   public shared ({ caller }) func createPost(
     id : Text,
     title : Text,
@@ -270,6 +415,15 @@ actor {
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create posts");
+    };
+    if (posts.get(id) != null) {
+      Runtime.trap("Post with this ID already exists");
+    };
+    if (not validatePostTitle(title)) {
+      Runtime.trap("Invalid title: must be 1-200 characters");
+    };
+    if (not validatePostDescription(description)) {
+      Runtime.trap("Invalid description: must be 1-5000 characters");
     };
 
     let post : Post = {
@@ -285,6 +439,13 @@ actor {
     };
 
     posts.add(id, post);
+
+    // Update user posts index
+    let updatedPostIds = switch (userPostsIndex.get(caller)) {
+      case (null) { [id] };
+      case (?existing) { Array.append(existing, [id]) };
+    };
+    userPostsIndex.add(caller, updatedPostIds);
   };
 
   public query ({ caller }) func getPost(id : Text) : async ?Post {
@@ -296,22 +457,36 @@ actor {
   };
 
   public query ({ caller }) func getPostsByUser(user : Principal) : async [Post] {
-    posts.values().toArray().filter(func(p) { p.author == user });
+    switch (userPostsIndex.get(user)) {
+      case (null) { [] };
+      case (?postIds) {
+        Array.mapFilter<Text, Post>(
+          postIds,
+          func(id) { posts.get(id) }
+        );
+      };
+    };
   };
 
   public shared ({ caller }) func likePost(postId : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can like posts");
     };
+    if (posts.get(postId) == null) {
+      Runtime.trap("Post not found");
+    };
 
-    let currentLikes = switch (postLikes.get(postId)) {
+    let newLikes = switch (postLikes.get(postId)) {
       case (null) { Set.singleton(caller) };
-      case (?existing) {
-        existing.add(caller);
-        existing;
+      case (?existing) { 
+        var newSet = Set.empty<Principal>();
+        for (liker in existing.values()) {
+          newSet := newSet.add(liker);
+        };
+        newSet.add(caller);
       };
     };
-    postLikes.add(postId, currentLikes);
+    postLikes.add(postId, newLikes);
   };
 
   public shared ({ caller }) func unlikePost(postId : Text) : async () {
@@ -322,8 +497,13 @@ actor {
     switch (postLikes.get(postId)) {
       case (null) { Runtime.trap("No likes found for this post") };
       case (?existing) {
-        existing.remove(caller);
-        postLikes.add(postId, existing);
+        var newSet = Set.empty<Principal>();
+        for (liker in existing.values()) {
+          if (liker != caller) {
+            newSet := newSet.add(liker);
+          };
+        };
+        postLikes.add(postId, newSet);
       };
     };
   };
@@ -339,12 +519,15 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can add comments");
     };
+    if (not validateCommentContent(content)) {
+      Runtime.trap("Invalid comment: must be 1-1000 characters");
+    };
 
     switch (posts.get(postId)) {
       case (null) { Runtime.trap("Post not found") };
       case (?_) {
         commentCounter += 1;
-        let commentId = postId.concat("-".concat(commentCounter.toText()));
+        let commentId = generateCommentId(postId, commentCounter);
         let comment : Comment = {
           id = commentId;
           postId;
@@ -353,15 +536,30 @@ actor {
           createdAt = Time.now();
         };
         comments.add(commentId, comment);
+
+        // Update post comments index
+        let updatedCommentIds = switch (postCommentsIndex.get(postId)) {
+          case (null) { [commentId] };
+          case (?existing) { Array.append(existing, [commentId]) };
+        };
+        postCommentsIndex.add(postId, updatedCommentIds);
       };
     };
   };
 
   public query ({ caller }) func getCommentsForPost(postId : Text) : async [Comment] {
-    comments.values().toArray().filter(func(c) { c.postId == postId });
+    switch (postCommentsIndex.get(postId)) {
+      case (null) { [] };
+      case (?commentIds) {
+        Array.mapFilter<Text, Comment>(
+          commentIds,
+          func(id) { comments.get(id) }
+        );
+      };
+    };
   };
 
-  // Live streams
+  // ============ Live Streams Management ============
   public shared ({ caller }) func createLiveStream(
     id : Text,
     title : Text,
@@ -370,6 +568,9 @@ actor {
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create live streams");
+    };
+    if (liveStreams.get(id) != null) {
+      Runtime.trap("Live stream with this ID already exists");
     };
 
     let stream : LiveStream = {
@@ -382,7 +583,6 @@ actor {
       viewers = 0;
       startedAt = Time.now();
     };
-
     liveStreams.add(id, stream);
   };
 
@@ -470,7 +670,7 @@ actor {
     liveStreams.get(id);
   };
 
-  // NFT Marketplace
+  // ============ NFT Marketplace ============
   public shared ({ caller }) func createNFTListing(
     id : Text,
     title : Text,
@@ -480,6 +680,12 @@ actor {
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create NFT listings");
+    };
+    if (nfts.get(id) != null) {
+      Runtime.trap("NFT with this ID already exists");
+    };
+    if (price == 0) {
+      Runtime.trap("NFT price must be greater than 0");
     };
 
     let nft : NFT = {
@@ -493,8 +699,14 @@ actor {
       isSold = false;
       createdAt = Time.now();
     };
-
     nfts.add(id, nft);
+
+    // Update user NFTs index
+    let updatedNFTIds = switch (userNFTsIndex.get(caller)) {
+      case (null) { [id] };
+      case (?existing) { Array.append(existing, [id]) };
+    };
+    userNFTsIndex.add(caller, updatedNFTIds);
   };
 
   public shared ({ caller }) func buyNFTListing(id : Text) : async () {
@@ -512,6 +724,7 @@ actor {
           Runtime.trap("Cannot buy your own NFT");
         };
 
+        // TODO: Implement payment verification via ICP ledger
         let updatedNFT : NFT = {
           id = nft.id;
           creator = nft.creator;
@@ -524,6 +737,13 @@ actor {
           createdAt = nft.createdAt;
         };
         nfts.add(id, updatedNFT);
+
+        // Update NFT index for new owner
+        let updatedNFTIds = switch (userNFTsIndex.get(caller)) {
+          case (null) { [id] };
+          case (?existing) { Array.append(existing, [id]) };
+        };
+        userNFTsIndex.add(caller, updatedNFTIds);
       };
     };
   };
@@ -538,6 +758,18 @@ actor {
 
   public query ({ caller }) func listNFTsByCreator(creator : Principal) : async [NFT] {
     nfts.values().toArray().filter(func(n) { n.creator == creator });
+  };
+
+  public query ({ caller }) func listNFTsByOwner(owner : Principal) : async [NFT] {
+    switch (userNFTsIndex.get(owner)) {
+      case (null) { [] };
+      case (?nftIds) {
+        Array.mapFilter<Text, NFT>(
+          nftIds,
+          func(id) { nfts.get(id) }
+        );
+      };
+    };
   };
 
   public shared ({ caller }) func markNFTAsSold(id : Text) : async () {
@@ -564,10 +796,16 @@ actor {
     };
   };
 
-  // Chat messages
+  // ============ Chat Messages ============
   public shared ({ caller }) func sendMessage(recipient : Principal, content : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can send messages");
+    };
+    if (userProfiles.get(recipient) == null) {
+      Runtime.trap("Recipient user does not exist");
+    };
+    if (Text.size(content) == 0 or Text.size(content) > 5000) {
+      Runtime.trap("Message content must be 1-5000 characters");
     };
 
     let message : Message = {
@@ -578,21 +816,17 @@ actor {
       isRead = false;
     };
 
+    // Store in recipient's messages
     let recipientMessages = switch (messages.get(recipient)) {
       case (null) { List.singleton<Message>(message) };
-      case (?existing) {
-        existing.add(message);
-        existing;
-      };
+      case (?existing) { List.push(message, existing) };
     };
     messages.add(recipient, recipientMessages);
 
+    // Store in sender's messages
     let senderMessages = switch (messages.get(caller)) {
       case (null) { List.singleton<Message>(message) };
-      case (?existing) {
-        existing.add(message);
-        existing;
-      };
+      case (?existing) { List.push(message, existing) };
     };
     messages.add(caller, senderMessages);
   };
@@ -605,7 +839,7 @@ actor {
     switch (messages.get(caller)) {
       case (null) { [] };
       case (?msgs) {
-        msgs.toArray().filter(func(m) {
+        List.toArray(msgs).filter(func(m) {
           (m.sender == caller and m.recipient == withUser) or
           (m.sender == withUser and m.recipient == caller)
         });
@@ -620,7 +854,7 @@ actor {
 
     switch (messages.get(caller)) {
       case (null) { [] };
-      case (?msgs) { msgs.toArray() };
+      case (?msgs) { List.toArray(msgs) };
     };
   };
 
@@ -632,7 +866,8 @@ actor {
     switch (messages.get(caller)) {
       case (null) { };
       case (?msgs) {
-        let updatedMessages = msgs.map<Message, Message>(
+        let updatedMessages = List.map<Message, Message>(
+          msgs,
           func(m) {
             if (m.sender == withUser and m.recipient == caller and not m.isRead) {
               {
@@ -652,10 +887,13 @@ actor {
     };
   };
 
-  // Creator earnings
+  // ============ Creator Earnings ============
   public shared ({ caller }) func recordEarning(user : Principal, amount : Nat, source : { #ad; #nft; #tip }) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can record earnings");
+    };
+    if (amount == 0) {
+      Runtime.trap("Earning amount must be greater than 0");
     };
 
     let earning : Earning = {
@@ -667,10 +905,7 @@ actor {
 
     let userEarnings = switch (earnings.get(user)) {
       case (null) { List.singleton<Earning>(earning) };
-      case (?existing) {
-        existing.add(earning);
-        existing;
-      };
+      case (?existing) { List.push(earning, existing) };
     };
     earnings.add(user, userEarnings);
   };
@@ -684,7 +919,7 @@ actor {
     switch (earnings.get(user)) {
       case (null) { 0 };
       case (?userEarnings) {
-        for (earning in userEarnings.values()) {
+        for (earning in List.toArray(userEarnings).vals()) {
           total += earning.amount;
         };
         total;
@@ -700,7 +935,33 @@ actor {
     switch (earnings.get(user)) {
       case (null) { [] };
       case (?userEarnings) {
-        userEarnings.toArray().sort();
+        let earningsArray = List.toArray(userEarnings);
+        Array.sortInPlace<Earning>(
+          earningsArray,
+          func(a : Earning, b : Earning) {
+            Int.compare(a.timestamp, b.timestamp);
+          }
+        );
+        earningsArray;
+      };
+    };
+  };
+
+  public query ({ caller }) func getEarningsBySource(user : Principal, source : { #ad; #nft; #tip }) : async Nat {
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own earnings");
+    };
+
+    var total = 0;
+    switch (earnings.get(user)) {
+      case (null) { 0 };
+      case (?userEarnings) {
+        for (earning in List.toArray(userEarnings).vals()) {
+          if (earning.source == source) {
+            total += earning.amount;
+          };
+        };
+        total;
       };
     };
   };
