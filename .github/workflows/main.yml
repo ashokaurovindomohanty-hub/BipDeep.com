@@ -61,3 +61,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+yml
+- name: Checkout code
+  uses: actions/checkout@v2
