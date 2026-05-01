@@ -1,0 +1,45 @@
+name: Deploy to Internet Computer
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install DFINITY SDK
+        uses: dfinity/install@v1
+        with:
+          version: 0.15.2
+
+      - name: Start local replica
+        run: dfx start --background
+
+      - name: Deploy backend canisters
+        run: dfx deploy
+
+      - name: Build frontend
+        run: pnpm --filter @caffeine/template-frontend run build
+
+      - name: Deploy frontend canister
+        run: dfx deploy --network ic
