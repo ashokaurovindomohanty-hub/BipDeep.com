@@ -48,7 +48,17 @@ export interface Earning {
     user: Principal;
     timestamp: Time;
     amount: bigint;
-}
+    }
+export type CreatePostResult = {
+    ok: null;
+} | {
+    err: string;
+};
+export type MutationResult = {
+    ok: null;
+} | {
+    err: string;
+};
 export interface NFT {
     id: string;
     title: string;
@@ -77,7 +87,8 @@ export enum Variant_ad_nft_tip {
     tip = "tip"
 }
 export interface backendInterface {
-    addComment(postId: string, content: string): Promise<void>;
+addComment(postId: string, content: string): Promise<MutationResult>;
+    
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     buyNFTListing(id: string): Promise<void>;
     createLiveStream(id: string, title: string, description: string, thumbnailUrl: string): Promise<void>;
