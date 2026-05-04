@@ -92,7 +92,7 @@ export interface backendInterface {
     buyNFTListing(id: string): Promise<void>;
     createLiveStream(id: string, title: string, description: string, thumbnailUrl: string): Promise<void>;
     createNFTListing(id: string, title: string, description: string, imageUrl: string, price: bigint): Promise<void>;
-    createPost(id: string, title: string, description: string, videoUrl: string, thumbnailUrl: string, duration: bigint, tags: Array<string>): Promise<void>;
+    createPost(id: string, title: string, description: string, videoUrl: string, thumbnailUrl: string, duration: bigint, tags: Array<string>): Promise<CreatePostResult>;
     createProfile(username: string, bio: string, avatarUrl: string): Promise<void>;
     endLiveStream(id: string): Promise<void>;
     followUser(target: Principal): Promise<void>;
@@ -129,7 +129,7 @@ export interface backendInterface {
     markNFTAsSold(id: string): Promise<void>;
     recordEarning(user: Principal, amount: bigint, source: Variant_ad_nft_tip): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
-    sendMessage(recipient: Principal, content: string): Promise<void>;
+    sendMessage(recipient: Principal, content: string): Promise<MutationResult>;
     unfollowUser(target: Principal): Promise<void>;
     unlikePost(postId: string): Promise<void>;
     updateProfile(username: string, bio: string, avatarUrl: string): Promise<void>;
