@@ -1,0 +1,14 @@
+# Logs
+logs
+*.log
+# System Files
+.DS_Store
+Thumbs.db
+# Env files
+.env
+# pnpm
+pnpm-debug.log
+pnpm-lock.yaml
+# DFX
+dfx.json.backup
+dfx.lock
