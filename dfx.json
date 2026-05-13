@@ -1,1 +1,11 @@
-{ 
+{
+  "canisters": {
+    "bipdeep_icp_canister": {
+      "type": "custom",
+      "build": "cargo build -p bipdeep_icp_canister --release",
+      "candid": "src/backend/bipdeep_icp_canister.did",
+      "wasm": "target/wasm32-unknown-unknown/release/bipdeep_icp_canister.wasm"
+    }
+  },
+  "version": 1
+}
