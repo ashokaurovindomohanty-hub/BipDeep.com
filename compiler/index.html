@@ -11,14 +11,6 @@
   <textarea id="code" rows="20" cols="100"></textarea>
   <button onclick="compileCode()">Compile</button>
   <div id="output"></div>
-  <script>
-    function compileCode() {
-      const code = document.getElementById('code').value;
-      const lang = 'python'; // default language
-      // TO DO: Send code to server for compilation
-      // For now, just display the code
-      document.getElementById('output').innerHTML = code;
-    }
-  </script>
+  <script src="../script.js"></script> 
 </body>
 </html>
