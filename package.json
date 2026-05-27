@@ -14,5 +14,19 @@
   },
   "devDependencies": {
     "sharp": "^0.34.4"
-  }
+  },
+  "version": "1.0.0",
+  "description": "Eon is a mobile-first social media prototype built with a React frontend and a Motoko backend, designed for short-form videos, live streaming, chat, NFT marketplace interactions, and creator monetization.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ashokaurovindomohanty-hub/BipDeep.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ashokaurovindomohanty-hub/BipDeep/issues"
+  },
+  "homepage": "https://github.com/ashokaurovindomohanty-hub/BipDeep#readme"
 }
