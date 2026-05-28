@@ -4,5 +4,6 @@
     "src": "**/*", 
     "use": "@vercel/static-build" 
   }],
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "routes": [{ "src": "/", "dest": "/index.html" }]
 }
