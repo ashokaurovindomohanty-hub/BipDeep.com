@@ -1,9 +1,0 @@
-name = "bipdeep_icp_canister"
-version = "0.1.0"
-edition = "2021"
-[lib]
-name = "bipdeep_icp_canister"
-path = "src/lib.rs"
-[dependencies]
-ic-cdk = "0.3.0"
-ic-cdk-macros = "0.3.0"
