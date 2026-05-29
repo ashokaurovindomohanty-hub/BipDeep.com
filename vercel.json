@@ -1,9 +1,13 @@
-{
-  "version": 2,
+{ 
+  "version": 2, 
   "builds": [{ 
     "src": "**/*", 
-    "use": "@vercel/static-build" 
-  }],
-  "outputDirectory": "public",
-  "routes": [{ "src": "/", "dest": "/index.html" }]
+    "use": "@vercel/static-build", 
+    "config": { "rootDirectory": "." } 
+  }], 
+  "outputDirectory": "public", 
+  "routes": [{ 
+    "src": "/", 
+    "dest": "/index.html" 
+  }] 
 }
