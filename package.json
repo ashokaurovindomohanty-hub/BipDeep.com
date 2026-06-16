@@ -7,10 +7,10 @@
     "npm": ">=8.0.0"
   },
   "scripts": {
-    "build": "pnpm -r --if-present run build",
-    "typecheck": "pnpm -r --if-present run typecheck",
-    "check": "pnpm -r --if-present run check",
-    "fix": "pnpm -r --if-present run fix"
+  "build": "npm run build",
+  "typecheck": "npm run typecheck",
+  "check": "npm run check",
+  "fix": "npm run fix"
   },
   "devDependencies": {
     "sharp": "^0.34.4"
