@@ -4,7 +4,7 @@
   "engines": {
     "node": ">=16.0.0",
     "pnpm": ">=7.0.0",
-    "npm": "please use pnpm"
+    "npm": ">=8.0.0"
   },
   "scripts": {
     "build": "pnpm -r --if-present run build",
